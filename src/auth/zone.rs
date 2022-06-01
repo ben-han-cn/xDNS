@@ -149,11 +149,11 @@ mod test {
         zone.add_rrset(b_com_ns.clone());
 
         let a_com = Name::from_str("a.com").unwrap();
-        let result = zone.find(&a_com, RRType::A);
+        let result = zone.find(&a_com, RRType::A, FindMode::DefaultFind);
         assert!(matches!(result, FindResult::Success(rrset) if rrset.eq(&a_com_rrset)));
 
         let a_b_com = Name::from_str("a.b.com").unwrap();
-        let result = zone.find(&a_b_com, RRType::A);
+        let result = zone.find(&a_b_com, RRType::A, FindMode::DefaultFind);
         assert!(matches!(result, FindResult::Delegation(rrset) if rrset.eq(&b_com_ns)));
     }
 }

@@ -1,5 +1,6 @@
 mod api;
 mod auth;
+mod recursor;
 mod server;
 
 use std::net::SocketAddr;
