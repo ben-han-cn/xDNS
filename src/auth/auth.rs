@@ -4,10 +4,11 @@ use std::sync::{Arc, RwLock};
 use anyhow::{self, bail};
 use async_trait::async_trait;
 use r53::{
-    DomainTree, FindResultFlag, Name, RRset, Rcode, Request, Response, ResponseBuilder, SectionType,
+    DomainTree, FindResultFlag, Name, RRType, RRset, Rcode, Request, Response, ResponseBuilder,
+    SectionType,
 };
 
-use super::zone::{FindResult, MemoryZone};
+use super::zone::{FindMode, FindResult, MemoryZone};
 use super::zone_content_generator::{default_ns_and_glue, default_soa};
 use crate::server::Handler;
 
@@ -42,6 +43,19 @@ impl Auth {
             bail!("add duplicate zone");
         }
     }
+
+    pub fn add_rrset(&self, zone: &Name, rrset: RRset) -> anyhow::Result<()> {
+        let mut zones = self.zones.write().unwrap();
+        let result = zones.find(zone);
+        if result.flag == FindResultFlag::ExacatMatch {
+            if let Some(zone) = result.get_value_mut() {
+                zone.add_rrset(rrset);
+                return Ok(());
+            }
+        }
+
+        bail!("unknown zone");
+    }
 }
 
 #[async_trait]
@@ -57,7 +71,7 @@ impl Handler for Auth {
         if result.flag == FindResultFlag::ExacatMatch || result.flag == FindResultFlag::PartialMatch
         {
             if let Some(zone) = result.get_value() {
-                match zone.find(&req.question.name, req.question.typ) {
+                match zone.find(&req.question.name, req.question.typ, FindMode::DefaultFind) {
                     FindResult::Success(rrset) => {
                         builder
                             .rcode(Rcode::NoError)
@@ -65,13 +79,23 @@ impl Handler for Auth {
                             .done();
                     }
                     FindResult::Delegation(rrset) => {
+                        if let Some(glues) = zone.get_glue_for_ns(&rrset) {
+                            for rrset in glues {
+                                builder.add_rrset(SectionType::Additional, rrset);
+                            }
+                        }
+
                         builder
                             .rcode(Rcode::NoError)
                             .add_rrset(SectionType::Authority, rrset)
                             .done();
                     }
                     FindResult::NXDomain => {
-                        builder.rcode(Rcode::NXDomain).done();
+                        let soa = zone.get_apex_rrset(RRType::SOA).unwrap();
+                        builder
+                            .rcode(Rcode::NXDomain)
+                            .add_rrset(SectionType::Authority, soa)
+                            .done();
                     }
                     FindResult::NXRRset => {
                         builder.rcode(Rcode::NoError).done();

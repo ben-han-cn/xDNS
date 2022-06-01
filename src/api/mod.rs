@@ -1,7 +1,6 @@
 use actix_web::{error, middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer};
 use r53::{Name, RRset};
 use serde::{Deserialize, Serialize};
-use std::str::FromStr;
 
 use crate::auth::Auth;
 
@@ -15,9 +14,7 @@ struct AddZoneRequest {
 #[derive(Serialize, Deserialize, Debug, Default)]
 struct AddRRsetRequest {
     pub zone: String,
-    pub name: String,
-    pub r#type: String,
-    pub rdata: String,
+    pub rrset: Vec<String>,
 }
 
 struct ApiState {
@@ -30,9 +27,18 @@ impl ApiState {
     }
 }
 
-async fn addzone(req: web::Json<AddZoneRequest>, zones: web::Data<ApiState>) -> HttpResponse {
+async fn add_zone(req: web::Json<AddZoneRequest>, zones: web::Data<ApiState>) -> HttpResponse {
     if let Ok(name) = Name::new(req.name.as_ref()) {
         zones.auth.add_zone(name, &req.ips);
+    }
+    HttpResponse::Ok().json(req.0)
+}
+
+async fn add_rrset(req: web::Json<AddRRsetRequest>, zones: web::Data<ApiState>) -> HttpResponse {
+    if let Ok(name) = Name::new(req.zone.as_ref()) {
+        if let Ok(rrset) = RRset::from_strs(&req.rrset) {
+            zones.auth.add_rrset(&name, rrset);
+        }
     }
     HttpResponse::Ok().json(req.0)
 }
@@ -43,7 +49,8 @@ pub async fn start(auth: Auth) {
         App::new()
             .app_data(web::JsonConfig::default().content_type(|_| true))
             .app_data(web::Data::new(ApiState::new(auth)))
-            .service(web::resource("/addzone").route(web::post().to(addzone)))
+            .service(web::resource("/addzone").route(web::post().to(add_zone)))
+            .service(web::resource("/addrrset").route(web::post().to(add_rrset)))
     })
     .bind(("127.0.0.1", 8080))
     .unwrap()

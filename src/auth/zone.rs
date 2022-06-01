@@ -2,6 +2,12 @@ use r53::{DomainTree, FindResultFlag, Name, NodeChain, NodePtr, RRType, RRset};
 use std::sync::RwLock;
 
 #[derive(Debug)]
+pub(crate) enum FindMode {
+    DefaultFind,
+    GlueOkFind,
+}
+
+#[derive(Debug)]
 pub(crate) enum FindResult {
     Success(RRset),
     Delegation(RRset),
@@ -51,22 +57,24 @@ impl MemoryZone {
         };
     }
 
-    pub fn find(&self, name: &Name, typ: RRType) -> FindResult {
+    pub fn find(&self, name: &Name, typ: RRType, find_mode: FindMode) -> FindResult {
         let tree = self.domains.read().unwrap();
         let mut node_chain = NodeChain::new(&*tree);
         let mut result = FindResult::NXDomain;
 
-        let callback = |n: NodePtr<Vec<RRset>>, _, result: &mut FindResult| {
-            for rrset in n.get_value().as_ref().unwrap().iter() {
-                if rrset.typ == RRType::NS {
-                    *result = FindResult::Delegation(rrset.clone());
-                    return true;
+        let mut callback = match find_mode {
+            FindMode::DefaultFind => Some(|n: NodePtr<Vec<RRset>>, _, result: &mut FindResult| {
+                for rrset in n.get_value().as_ref().unwrap().iter() {
+                    if rrset.typ == RRType::NS {
+                        *result = FindResult::Delegation(rrset.clone());
+                        return true;
+                    }
                 }
-            }
-            false
+                false
+            }),
+            FindMode::GlueOkFind => None,
         };
-        let find_result =
-            tree.find_node_ext(name, &mut node_chain, &mut Some(callback), &mut result);
+        let find_result = tree.find_node_ext(name, &mut node_chain, &mut callback, &mut result);
         match result {
             FindResult::Delegation(_) => {
                 return result;
@@ -101,6 +109,27 @@ impl MemoryZone {
             }
         }
         return None;
+    }
+
+    pub fn get_glue_for_ns(&self, ns: &RRset) -> Option<Vec<RRset>> {
+        let mut glues = Vec::with_capacity(ns.rr_count());
+        for rdata in &ns.rdatas {
+            match rdata {
+                r53::RData::NS(ref ns) => {
+                    if ns.name.is_subdomain(&self.origin) {
+                        let result = self.find(&ns.name, RRType::A, FindMode::GlueOkFind);
+                        match result {
+                            FindResult::Success(rrset) => glues.push(rrset),
+                            _ => {}
+                        }
+                    }
+                }
+                _ => {
+                    unreachable!("ns record isn't ns type");
+                }
+            }
+        }
+        Some(glues)
     }
 }
 
