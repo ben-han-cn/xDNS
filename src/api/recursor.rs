@@ -39,7 +39,7 @@ pub async fn start_recursor_api(recursor: Recursor, addr: SocketAddr) {
         App::new()
             .app_data(web::JsonConfig::default().content_type(|_| true))
             .app_data(web::Data::new(ApiState::new(recursor)))
-            .service(web::resource("/addforward").route(web::post().to(add_forward)))
+            .service(web::resource("/AddForward").route(web::post().to(add_forward)))
     })
     .bind(addr)
     .unwrap()
