@@ -4,7 +4,7 @@
 ```xDNS auth --dns 127.0.0.1:5555 --http 127.0.0.1:8888```
 
 ### Create zone
-```curl localhost:8888/AddZone -d'{"name":"com", "ips": ["1.1.1.1"]}'```
+```curl localhost:8888/AddZone -d'{"name":"com", "ips": ["1.1.1.1"]}'```    
 create zone com, with name server address as 1.1.1.1
 
 ### Create RRset
