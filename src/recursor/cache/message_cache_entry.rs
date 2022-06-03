@@ -11,6 +11,7 @@ pub struct MessageEntry {
     answer_rrset_count: u16,
     auth_rrset_count: u16, //for soa
     rrsets: Vec<RRset>,
+    init_time: Instant,
     expire_time: Instant,
 }
 
@@ -29,12 +30,14 @@ impl MessageEntry {
             0
         };
 
+        let now = Instant::now();
         let mut entry = MessageEntry {
             rcode: resp.header.rcode,
             answer_rrset_count,
             auth_rrset_count,
             rrsets: Vec::with_capacity((answer_rrset_count + auth_rrset_count) as usize),
-            expire_time: Instant::now(),
+            init_time: now,
+            expire_time: now,
         };
 
         let mut min_ttl = RRTtl(u32::max_value());
@@ -67,15 +70,15 @@ impl MessageEntry {
 
     pub fn gen_response(&self, req: &Request) -> Option<Response> {
         let now = Instant::now();
-        let elapsed = self.expire_time.checked_duration_since(now);
-        if elapsed.is_none() {
+        if self.expire_time < now {
             return None;
         }
 
-        let elapsed = elapsed.unwrap().as_secs();
+        let elapsed = self.init_time.elapsed().as_secs();
         let mut resp = Response::with_question(req.question.name.clone(), req.question.typ);
         let mut builder = ResponseBuilder::new(&mut resp);
         builder
+            .id(req.header.id)
             .make_response()
             .set_flag(HeaderFlag::RecursionAvailable)
             .rcode(self.rcode);

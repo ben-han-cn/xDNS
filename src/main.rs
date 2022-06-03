@@ -6,13 +6,70 @@ mod server;
 use std::net::SocketAddr;
 use std::thread;
 
+use clap::{arg, Command};
 use tokio::runtime::{self, Runtime};
 use tokio::signal;
 
 use auth::Auth;
+use recursor::Recursor;
 use server::UdpServer;
 
 fn main() {
+    let matches = Command::new("xdns")
+        .about("xdns a dns server")
+        .subcommand_required(true)
+        .arg_required_else_help(true)
+        .allow_external_subcommands(true)
+        .subcommand(
+            Command::new("auth")
+                .about("authority dns server")
+                .arg(arg!(--dns <DNS> "dns server addr"))
+                .arg(arg!(--http <HTTP> "http server addr"))
+                .arg_required_else_help(true),
+        )
+        .subcommand(
+            Command::new("recursor")
+                .about("recursive dns server")
+                .arg(arg!(--dns <DNS> "dns server addr"))
+                .arg(arg!(--http <HTTP> "http server addr"))
+                .arg_required_else_help(true),
+        )
+        .get_matches();
+
+    match matches.subcommand() {
+        Some(("auth", sub_matches)) => {
+            let dns_addr = sub_matches
+                .value_of("dns")
+                .unwrap()
+                .parse::<SocketAddr>()
+                .unwrap();
+            let cmd_addr = sub_matches
+                .value_of("http")
+                .unwrap()
+                .parse::<SocketAddr>()
+                .unwrap();
+            start_auth(cmd_addr, dns_addr);
+        }
+
+        Some(("recursor", sub_matches)) => {
+            let dns_addr = sub_matches
+                .value_of("dns")
+                .unwrap()
+                .parse::<SocketAddr>()
+                .unwrap();
+            let cmd_addr = sub_matches
+                .value_of("http")
+                .unwrap()
+                .parse::<SocketAddr>()
+                .unwrap();
+            start_recursor(cmd_addr, dns_addr);
+        }
+
+        _ => unreachable!(),
+    }
+}
+
+fn start_auth(cmd_addr: SocketAddr, dns_addr: SocketAddr) {
     let auth = Auth::new();
     {
         let auth = auth.clone();
@@ -21,16 +78,39 @@ fn main() {
                 .enable_all()
                 .build()
                 .unwrap()
-                .block_on(api::start(auth));
+                .block_on(api::start_auth_api(auth, cmd_addr));
         });
     }
 
-    Runtime::new().unwrap().block_on(async {
-        tokio::spawn(async {
-            UdpServer::new(auth)
-                .run("127.0.0.1:5555".parse::<SocketAddr>().unwrap())
-                .await
+    Runtime::new().unwrap().block_on(async move {
+        tokio::spawn(async move { UdpServer::new(auth).run(dns_addr).await });
+
+        match signal::ctrl_c().await {
+            Ok(()) => {
+                println!("get stop signal, bye!");
+            }
+            Err(err) => {
+                panic!("listen shutdown signal failed: {}", err);
+            }
+        }
+    })
+}
+
+fn start_recursor(cmd_addr: SocketAddr, dns_addr: SocketAddr) {
+    let recursor = Recursor::new();
+    {
+        let recursor = recursor.clone();
+        thread::spawn(move || {
+            runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(api::start_recursor_api(recursor, cmd_addr));
         });
+    }
+
+    Runtime::new().unwrap().block_on(async move {
+        tokio::spawn(async move { UdpServer::new(recursor).run(dns_addr).await });
 
         match signal::ctrl_c().await {
             Ok(()) => {

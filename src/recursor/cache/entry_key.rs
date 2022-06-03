@@ -13,6 +13,7 @@ pub struct EntryKey {
 }
 
 unsafe impl Send for EntryKey {}
+unsafe impl Sync for EntryKey {}
 
 impl EntryKey {
     pub fn new(name: Name, typ: RRType) -> Self {
