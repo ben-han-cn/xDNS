@@ -110,10 +110,12 @@ fn start_recursor(cmd_addr: SocketAddr, dns_addr: SocketAddr) {
     }
 
     Runtime::new().unwrap().block_on(async move {
-        let recursor_clone = recursor.clone();
-        tokio::spawn(async move { UdpServer::new(recursor).run(dns_addr).await });
+        {
+            let recursor = recursor.clone();
+            tokio::spawn(async move { UdpServer::new(recursor).run(dns_addr).await });
+        }
 
-        tokio::spawn(async move { recursor_clone.collect_query_statistic().await });
+        tokio::spawn(async move { recursor.collect_query_statistic().await });
 
         match signal::ctrl_c().await {
             Ok(()) => {
