@@ -5,12 +5,16 @@ use r53::{DomainTree, FindResultFlag, Name, Rcode, Request, Response, ResponseBu
 use std::{
     net::SocketAddr,
     sync::{Arc, Mutex, RwLock},
+    time::Duration,
 };
+use tokio::time;
 
 use super::cache::MessageCache;
 use super::client::roundtrip;
+use super::query_statistic::QueryStatistic;
 
 const MESSAGE_CACHE_SIZE: usize = 40960;
+const QUERY_INFO_CACHE_SIZE: usize = 1000;
 
 #[derive(Clone)]
 pub struct Recursor {
@@ -20,6 +24,7 @@ pub struct Recursor {
 struct RecursorInner {
     forwarders: RwLock<DomainTree<SocketAddr>>,
     cache: Mutex<MessageCache>,
+    query_stat: Mutex<QueryStatistic>,
 }
 
 impl RecursorInner {
@@ -27,7 +32,18 @@ impl RecursorInner {
         Self {
             forwarders: RwLock::new(DomainTree::new()),
             cache: Mutex::new(MessageCache::new(MESSAGE_CACHE_SIZE)),
+            query_stat: Mutex::new(QueryStatistic::new(QUERY_INFO_CACHE_SIZE)),
         }
+    }
+
+    pub fn add_query(&self, name: &Name) {
+        let mut stat = self.query_stat.lock().unwrap();
+        stat.add_query(name);
+    }
+
+    pub fn collect_query_statistic(&self) -> Vec<(Name, u64)> {
+        let mut stat = self.query_stat.lock().unwrap();
+        stat.sort_and_clear()
     }
 
     pub fn add_forward(&self, zone: Name, addr: SocketAddr) -> anyhow::Result<()> {
@@ -37,7 +53,7 @@ impl RecursorInner {
     }
 
     pub fn get_forward(&self, name: &Name) -> Option<SocketAddr> {
-        let mut forwarders = self.forwarders.read().unwrap();
+        let forwarders = self.forwarders.read().unwrap();
         let result = forwarders.find(name);
         if result.flag == FindResultFlag::ExacatMatch || result.flag == FindResultFlag::PartialMatch
         {
@@ -69,11 +85,22 @@ impl Recursor {
     pub fn add_forward(&self, zone: Name, addr: SocketAddr) {
         self.inner.add_forward(zone, addr);
     }
+
+    pub async fn collect_query_statistic(&self) {
+        let mut interval = time::interval(Duration::from_secs(60));
+        loop {
+            interval.tick().await;
+            let info = self.inner.collect_query_statistic();
+            println!("query statistic:{:?}", info);
+        }
+    }
 }
 
 #[async_trait]
 impl Handler for Recursor {
     async fn resolve(&mut self, req: Request) -> anyhow::Result<Response> {
+        self.inner.add_query(&req.question.name);
+
         if let Some(resp) = self.inner.gen_response(&req) {
             return Ok(resp);
         }

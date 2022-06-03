@@ -170,10 +170,10 @@ mod tests {
         );
 
         let req = Request::new(Name::new("test.example.com.").unwrap(), RRType::A);
-        let response = entry.gen_response(&req).unwrap();
-        assert_eq!(response.header.qd_count, resp.header.qd_count);
+        let gen_resp = entry.gen_response(&req).unwrap();
+        assert_eq!(gen_resp.header.qd_count, resp.header.qd_count);
 
-        let gen_message_sections = response.section(SectionType::Answer).unwrap();
+        let gen_message_sections = gen_resp.section(SectionType::Answer).unwrap();
         for (i, rrset) in resp
             .section(SectionType::Answer)
             .unwrap()
@@ -183,7 +183,7 @@ mod tests {
             assert_eq!(rrset.typ, gen_message_sections[i].typ);
             assert_eq!(rrset.rdatas, gen_message_sections[i].rdatas);
             assert_eq!(rrset.name, gen_message_sections[i].name);
-            assert!(rrset.ttl.0 > gen_message_sections[i].ttl.0);
+            assert!(rrset.ttl.0 >= gen_message_sections[i].ttl.0);
         }
     }
 

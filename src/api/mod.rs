@@ -1,4 +1,5 @@
 mod auth;
+mod common;
 mod recursor;
 
 pub use auth::start_auth_api;

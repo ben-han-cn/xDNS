@@ -860,6 +860,7 @@ dependencies = [
 [[package]]
 name = "r53"
 version = "0.1.0"
+source = "git+https://github.com/ben-han-cn/r53?branch=master#83003eca408a9f38f3235d486b3428598258a851"
 dependencies = [
  "anyhow",
  "base64",
@@ -902,6 +903,7 @@ dependencies = [
 [[package]]
 name = "rdata_derive"
 version = "0.1.0"
+source = "git+https://github.com/ben-han-cn/r53?branch=master#83003eca408a9f38f3235d486b3428598258a851"
 dependencies = [
  "proc-macro2",
  "quote",

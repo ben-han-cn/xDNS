@@ -4,6 +4,7 @@ use actix_web::{error, middleware, web, App, Error, HttpRequest, HttpResponse, H
 use r53::{Name, RRset};
 use serde::{Deserialize, Serialize};
 
+use super::common::error_response;
 use crate::auth::Auth;
 
 #[derive(Serialize, Deserialize, Debug, Default)]
@@ -31,15 +32,27 @@ impl ApiState {
 
 async fn add_zone(req: web::Json<AddZoneRequest>, zones: web::Data<ApiState>) -> HttpResponse {
     if let Ok(name) = Name::new(req.name.as_ref()) {
-        zones.auth.add_zone(name, &req.ips);
+        if let Err(e) = zones.auth.add_zone(name, &req.ips) {
+            return error_response(e.to_string());
+        }
     }
     HttpResponse::Ok().json(req.0)
 }
 
 async fn add_rrset(req: web::Json<AddRRsetRequest>, zones: web::Data<ApiState>) -> HttpResponse {
-    if let Ok(name) = Name::new(req.zone.as_ref()) {
-        if let Ok(rrset) = RRset::from_strs(&req.rrset) {
-            zones.auth.add_rrset(&name, rrset);
+    match Name::new(req.zone.as_ref()) {
+        Ok(name) => match RRset::from_strs(&req.rrset) {
+            Ok(rrset) => {
+                if let Err(e) = zones.auth.add_rrset(&name, rrset) {
+                    return error_response(e.to_string());
+                }
+            }
+            Err(e) => {
+                return error_response(e.to_string());
+            }
+        },
+        Err(e) => {
+            return error_response(e.to_string());
         }
     }
     HttpResponse::Ok().json(req.0)
