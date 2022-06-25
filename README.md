@@ -16,7 +16,7 @@ curl localhost:8888/AddRRset -d'{"zone":"com", "rrset":["cert.com. 3600 IN CERT 
 
 ## Recursor
 ### Start
-```xDNS recursor --dns 127.0.0.1:5555 --http 127.0.0.1:8888```
+```xDNS recursor --dns 127.0.0.1:5555 --http 127.0.0.1:8888 --report=1.1.1.1:80```
 
 ### Add forward
 ```curl localhost:8888/AddForward -d'{"name":"com", "addr":"114.114.114.114:53"}'```
