@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use actix_web::{error, middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer};
+use actix_web::{web, App, HttpResponse, HttpServer};
 use r53::{Name, RRset};
 use serde::{Deserialize, Serialize};
 

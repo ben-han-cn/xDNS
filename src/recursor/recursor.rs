@@ -2,6 +2,7 @@ use crate::server::Handler;
 use anyhow::{self, bail};
 use async_trait::async_trait;
 use r53::{DomainTree, FindResultFlag, Name, Rcode, Request, Response, ResponseBuilder};
+use reqwest;
 use std::{
     net::SocketAddr,
     sync::{Arc, Mutex, RwLock},
@@ -11,10 +12,11 @@ use tokio::time;
 
 use super::cache::MessageCache;
 use super::client::roundtrip;
-use super::query_statistic::QueryStatistic;
+use super::query_statistic::{QueryInfo, QueryStatistic};
 
 const MESSAGE_CACHE_SIZE: usize = 40960;
 const QUERY_INFO_CACHE_SIZE: usize = 1000;
+const REPORT_HTTP_PATH: &'static str = "/filemarket/v1/dns/set";
 
 #[derive(Clone)]
 pub struct Recursor {
@@ -41,7 +43,7 @@ impl RecursorInner {
         stat.add_query(name);
     }
 
-    pub fn collect_query_statistic(&self) -> Vec<(Name, u64)> {
+    pub fn collect_query_statistic(&self) -> QueryInfo {
         let mut stat = self.query_stat.lock().unwrap();
         stat.sort_and_clear()
     }
@@ -86,12 +88,19 @@ impl Recursor {
         self.inner.add_forward(zone, addr);
     }
 
-    pub async fn collect_query_statistic(&self) {
-        let mut interval = time::interval(Duration::from_secs(60));
+    pub async fn collect_query_statistic(&self, report_server: SocketAddr) {
+        let mut interval = time::interval(Duration::from_secs(10));
         loop {
             interval.tick().await;
             let info = self.inner.collect_query_statistic();
-            println!("query statistic:{:?}", info);
+            let client = reqwest::Client::builder()
+                .timeout(Duration::from_secs(5))
+                .build()
+                .unwrap()
+                .post(format!("http://{}{}", report_server, REPORT_HTTP_PATH))
+                .json(&info)
+                .send()
+                .await;
         }
     }
 }

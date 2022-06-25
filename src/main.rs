@@ -32,6 +32,7 @@ fn main() {
                 .about("recursive dns server")
                 .arg(arg!(--dns <DNS> "dns server addr"))
                 .arg(arg!(--http <HTTP> "http server addr"))
+                .arg(arg!(--report <REPORT> "report collect server addr"))
                 .arg_required_else_help(true),
         )
         .get_matches();
@@ -62,7 +63,12 @@ fn main() {
                 .unwrap()
                 .parse::<SocketAddr>()
                 .unwrap();
-            start_recursor(cmd_addr, dns_addr);
+            let report_collect_server = sub_matches
+                .value_of("report")
+                .unwrap()
+                .parse::<SocketAddr>()
+                .unwrap();
+            start_recursor(cmd_addr, dns_addr, report_collect_server);
         }
 
         _ => unreachable!(),
@@ -96,7 +102,7 @@ fn start_auth(cmd_addr: SocketAddr, dns_addr: SocketAddr) {
     })
 }
 
-fn start_recursor(cmd_addr: SocketAddr, dns_addr: SocketAddr) {
+fn start_recursor(cmd_addr: SocketAddr, dns_addr: SocketAddr, report_collect_server: SocketAddr) {
     let recursor = Recursor::new();
     {
         let recursor = recursor.clone();
@@ -115,7 +121,11 @@ fn start_recursor(cmd_addr: SocketAddr, dns_addr: SocketAddr) {
             tokio::spawn(async move { UdpServer::new(recursor).run(dns_addr).await });
         }
 
-        tokio::spawn(async move { recursor.collect_query_statistic().await });
+        tokio::spawn(async move {
+            recursor
+                .collect_query_statistic(report_collect_server)
+                .await
+        });
 
         match signal::ctrl_c().await {
             Ok(()) => {
