@@ -89,7 +89,7 @@ impl Recursor {
     }
 
     pub async fn collect_query_statistic(&self, report_server: SocketAddr) {
-        let mut interval = time::interval(Duration::from_secs(10));
+        let mut interval = time::interval(Duration::from_secs(60));
         loop {
             interval.tick().await;
             let info = self.inner.collect_query_statistic();
